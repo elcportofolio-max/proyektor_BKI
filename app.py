@@ -1,14 +1,10 @@
 import streamlit as st
 import google.generativeai as genai
 
-# --- KONFIGURASI HALAMAN ---
-st.set_page_config(
-    page_title="Jadwal Proyektor FKIP UNTIKA",
-    page_icon="📽️",
-    layout="centered"
-)
+# --- KONFIGURASI ---
+st.set_page_config(page_title="Jadwal Proyektor UNTIKA", page_icon="📽️")
 
-# --- DATA JADWAL (Knowledge Base) ---
+# --- DATA JADWAL ---
 SCHEDULE_DATA = """
 JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - PRODI BAHASA INGGRIS UNTIKA:
 - 04 Mei (Monday): 07.30–10.00: Academic Reading (Anitha Thalib Mbau); 10.15–11.50: Language Learning Theories (Siti Rachmi); 12.30–15.00: Academic Writing Proficiency (Nurlaela); 15.15–16.55: Data Literacy (Nadya Septiani Rahman)
@@ -29,59 +25,47 @@ JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - PRODI BAHASA INGGRIS UNTIKA:
 - 29 Mei (Friday): 07.30–10.00: British/American Culture (Srilidiawati Epa); 10.15–11.50: Film Studies (Nadya Septiani Rahman); 12.30–15.00: English Poetry and Prose (Nadya Septiani); 15.15–16.55: English Phonetics and Phonology (Siti Rachmi)
 """
 
-LECTURERS = sorted(list(set([
-    "Anitha Thalib Mbau", "Siti Rachmi", "Nurlaela", "Nadya Septiani Rahman", 
-    "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", 
-    "Srilidiawati Epa", "Anita Thalib Mbau"
-])))
+# --- SIDEBAR & API CHECK ---
+st.sidebar.title("🔑 Akses API")
+api_input = st.sidebar.text_input("Ganti API Key (Opsional):", type="password")
 
-# --- LOGIKA API KEY (SMART MODE) ---
-api_key = ""
-if "GOOGLE_API_KEY" in st.secrets:
-    api_key = st.secrets["GOOGLE_API_KEY"]
-    st.sidebar.success("✅ API Sistem Aktif")
+# Ambil API Key dari Secrets jika input kosong
+api_key = api_input if api_input else st.secrets.get("GOOGLE_API_KEY", "")
+
+if api_key:
+    st.sidebar.success("Kunci API Terdeteksi")
 else:
-    api_key = st.sidebar.text_input("Google API Key:", type="password", help="Masukkan API Key jika Secrets belum diatur.")
-    st.sidebar.warning("⚠️ Masukkan API Key untuk menggunakan aplikasi.")
+    st.sidebar.error("Kunci API Tidak Ditemukan!")
 
-# --- KONTEN UTAMA ---
+# Pilih Model yang stabil (1.5 Flash atau 2.0 Flash)
+model_name = st.sidebar.selectbox("Pilih Model:", ["gemini-1.5-flash", "gemini-2.0-flash-exp"])
+
+# --- MAIN UI ---
 st.title("📽️ Jadwal Proyektor FKIP UNTIKA")
-st.info("Cari jadwal berdasarkan Tanggal, Nama Dosen, atau Keduanya.")
-
-# Input Form
-col1, col2 = st.columns(2)
-with col1:
-    date_val = st.number_input("📅 Tanggal (Mei 2026):", 0, 31, 0, help="Isi 0 untuk melihat semua tanggal.")
-with col2:
-    lecturer_val = st.selectbox("👤 Nama Dosen:", ["-- Semua Dosen --"] + LECTURERS)
+date_val = st.number_input("📅 Tanggal Mei 2026 (0 = Semua):", 0, 31, 0)
+lecturer_list = sorted(list(set(["Anitha Thalib Mbau", "Siti Rachmi", "Nurlaela", "Nadya Septiani Rahman", "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", "Srilidiawati Epa", "Anita Thalib Mbau"])))
+lecturer_val = st.selectbox("👤 Pilih Dosen:", ["-- Abaikan --"] + lecturer_list)
 
 if st.button("🔍 CARI JADWAL"):
     if not api_key:
-        st.error("API Key belum terkonfigurasi!")
-    elif date_val == 0 and lecturer_val == "-- Semua Dosen --":
-        st.warning("Pilih minimal Tanggal atau Nama Dosen.")
+        st.error("Silakan masukkan API Key yang valid!")
     else:
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            # Tes inisialisasi model
+            model = genai.GenerativeModel(model_name)
             
-            # Prompting cerdas
-            if date_val != 0 and lecturer_val == "-- Semua Dosen --":
-                query = f"Tampilkan semua jadwal pada tanggal {date_val} Mei 2026."
-            elif date_val == 0 and lecturer_val != "-- Semua Dosen --":
-                query = f"Tampilkan semua jadwal untuk dosen '{lecturer_val}' selama Mei 2026."
-            else:
-                query = f"Tampilkan jadwal dosen '{lecturer_val}' pada tanggal {date_val} Mei 2026."
+            # Logic Query
+            query = f"Cari jadwal untuk tanggal {date_val} dan dosen {lecturer_val}."
+            if date_val == 0: query = f"Cari jadwal untuk dosen {lecturer_val}."
+            if lecturer_val == "-- Abaikan --": query = f"Cari semua jadwal tanggal {date_val}."
 
-            full_prompt = f"Data Jadwal:\n{SCHEDULE_DATA}\n\nPerintah: {query}\nSajikan dalam tabel Markdown: Tanggal, Jam, Matakuliah, Dosen."
-
-            with st.spinner("Mencari data..."):
-                response = model.generate_content(full_prompt)
-                st.divider()
+            prompt = f"Gunakan data ini:\n{SCHEDULE_DATA}\n\nPerintah: {query}\nSajikan dalam tabel Markdown."
+            
+            with st.spinner("Menghubungkan ke server Google..."):
+                response = model.generate_content(prompt)
                 st.markdown(response.text)
+                
         except Exception as e:
-            st.error(f"Terjadi kesalahan: {e}")
-
-# Footer
-st.markdown("---")
-st.caption("© 2026 Prodi Bahasa Dan Kebudayaan Inggris - UNTIKA Luwuk")
+            st.error(f"❌ Terjadi kesalahan: {e}")
+            st.info("Saran Pakar: Pastikan API Key di Google AI Studio sudah benar dan pilih model 'gemini-1.5-flash' jika '2.0' atau '2.5' belum aktif di wilayah Anda.")
