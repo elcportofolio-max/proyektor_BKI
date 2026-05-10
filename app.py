@@ -1,17 +1,14 @@
 import streamlit as st
-import os
+import google.generativeai as genai
 
-# --- 1. PROTEKSI IMPORT ---
-try:
-    import google.generativeai as genai
-    AI_READY = True
-except ImportError:
-    AI_READY = False
+# --- 1. KONFIGURASI HALAMAN ---
+st.set_page_config(
+    page_title="Sistem Informasi Jadwal Proyektor FKIP UNTIKA",
+    page_icon="📽️",
+    layout="wide" # Menggunakan mode lebar agar tabel terlihat luas
+)
 
-# --- 2. KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="Jadwal Proyektor FKIP UNTIKA", page_icon="📽️")
-
-# --- 3. DATA JADWAL LENGKAP ---
+# --- 2. DATA JADWAL (KNOWLEDGE BASE) ---
 SCHEDULE_DATA = """
 JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
 - 04 Mei (Monday): 07.30–10.00: Academic Reading (Anitha Thalib Mbau); 10.15–11.50: Language Learning Theories (Siti Rachmi); 12.30–15.00: Academic Writing Proficiency (Nurlaela); 15.15–16.55: Data Literacy (Nadya Septiani Rahman)
@@ -32,71 +29,56 @@ JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
 - 29 Mei (Friday): 07.30–10.00: British/American Culture (Srilidiawati Epa); 10.15–11.50: Film Studies (Nadya Septiani Rahman); 12.30–15.00: English Poetry and Prose (Nadya Septiani); 15.15–16.55: English Phonetics and Phonology (Siti Rachmi)
 """
 
-# --- 4. LOGIKA UTAMA ---
-st.title("📽️ Sistem Jadwal Proyektor")
-st.write("Cari jadwal bulan Mei 2026")
-
-# Ambil API Key dari Secrets
+# --- 3. LOGIKA UTAMA (TANPA TAMPILAN SIDEBAR TEKNIS) ---
 api_key = st.secrets.get("GOOGLE_API_KEY", "")
 
-with st.sidebar:
-    st.header("🔑 Status AI")
-    if api_key:
-        st.success("API Terpasang")
-    else:
-        st.warning("API Key belum diatur di Secrets")
-        api_key = st.text_input("Masukan API Key Manual:", type="password")
+st.title("📽️ Jadwal Penggunaan Proyektor")
+st.markdown("### Program Studi Bahasa Dan Kebudayaan Inggris - FKIP UNTIKA Luwuk")
+st.write("Gunakan fitur di bawah untuk mencari jadwal berdasarkan **Tanggal** atau **Nama Dosen**.")
 
-if not AI_READY:
-    st.error("Library AI belum terinstal sempurna. Mohon tunggu beberapa saat.")
-    st.stop()
-
+# Input Pencarian
 col1, col2 = st.columns(2)
 with col1:
-    date_val = st.number_input("📅 Tanggal (Mei 2026):", 0, 31, 0)
+    date_val = st.number_input("📅 Masukkan Tanggal (Mei 2026):", 0, 31, 0, help="Isi 0 untuk mencari semua tanggal.")
 with col2:
-    lecturers = sorted(list(set(["Anitha Thalib Mbau", "Siti Rachmi", "Nurlaela", "Nadya Septiani Rahman", "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", "Srilidiawati Epa", "Anita Thalib Mbau"])))
-    lect_val = st.selectbox("👤 Pilih Nama Dosen:", ["-- Abaikan --"] + lecturers)
+    lecturers = sorted(list(set([
+        "Anitha Thalib Mbau", "Siti Rachmi", "Nurlaela", "Nadya Septiani Rahman", 
+        "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", 
+        "Srilidiawati Epa", "Anita Thalib Mbau"
+    ])))
+    lect_val = st.selectbox("👤 Pilih Nama Dosen:", ["-- Abaikan Nama Dosen --"] + lecturers)
 
 if st.button("🔍 CARI JADWAL SEKARANG"):
     if not api_key:
-        st.error("API Key kosong!")
+        st.error("Sistem Error: API Key tidak ditemukan di konfigurasi.")
+    elif date_val == 0 and lect_val == "-- Abaikan Nama Dosen --":
+        st.warning("Mohon masukkan tanggal atau pilih nama dosen.")
     else:
         try:
             genai.configure(api_key=api_key)
             
-            # --- BAGIAN SMART AUTO-DETECT MODEL ---
-            # AI akan mencari model apa saja yang tersedia di akun Anda
-            with st.spinner("Mendeteksi model AI yang aktif di akun Anda..."):
-                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                
-                if not available_models:
-                    st.error("Tidak ada model AI yang aktif pada API Key ini.")
-                    st.stop()
-                
-                # Pilih model terbaik yang tersedia (mencari flash atau pro)
-                # Jika ada gemini-2.0, gemini-1.5, atau gemini-pro, dia akan pilih salah satu.
-                selected_model_name = available_models[0] # Ambil yang pertama tersedia
-                model = genai.GenerativeModel(selected_model_name)
-                st.caption(f"Menggunakan Model: {selected_model_name}")
+            # Mendeteksi model yang tersedia secara otomatis
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            model = genai.GenerativeModel(available_models[0])
 
-            # Persiapan Query
-            if date_val != 0 and lect_val == "-- Abaikan --":
-                query = f"Tampilkan semua jadwal pada tanggal {date_val} Mei 2026."
-            elif date_val == 0 and lect_val != "-- Abaikan --":
+            # Query Logic
+            if date_val != 0 and lect_val == "-- Abaikan Nama Dosen --":
+                query = f"Tampilkan semua jadwal proyektor pada tanggal {date_val} Mei 2026."
+            elif date_val == 0 and lect_val != "-- Abaikan Nama Dosen --":
                 query = f"Tampilkan semua jadwal untuk dosen '{lect_val}' selama Mei 2026."
             else:
                 query = f"Tampilkan jadwal dosen '{lect_val}' pada tanggal {date_val} Mei 2026."
 
-            prompt = f"Gunakan data ini:\n{SCHEDULE_DATA}\n\nInstruksi: {query}\nSajikan dalam TABEL Markdown yang rapi."
+            prompt = f"Gunakan data ini:\n{SCHEDULE_DATA}\n\nPerintah: {query}\nSajikan dalam TABEL Markdown (Tanggal, Hari, Jam, Mata Kuliah)."
 
-            with st.spinner("AI sedang menyusun tabel jadwal..."):
+            with st.spinner("AI sedang memproses jadwal..."):
                 response = model.generate_content(prompt)
                 st.divider()
                 st.markdown(response.text)
                 
         except Exception as e:
-            st.error(f"Terjadi kesalahan AI: {e}")
+            st.error(f"Terjadi kesalahan sistem: {e}")
 
+# --- 4. FOOTER ---
 st.divider()
-st.caption("© 2026 Prodi Bahasa Dan Kebudayaan Inggris - UNTIKA Luwuk")
+st.markdown("<p style='text-align: center;'>© 2026 Prodi Bahasa Dan Kebudayaan Inggris - Universitas Tompotika Luwuk</p>", unsafe_allow_html=True)
