@@ -1,90 +1,19 @@
-import streamlit as st
-import os
-
-# --- 1. PROTEKSI IMPORT (Agar aplikasi tidak langsung error) ---
-try:
-    import google.generativeai as genai
-    AI_READY = True
-except ImportError:
-    AI_READY = False
-
-# --- 2. KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="Jadwal Proyektor FKIP UNTIKA", page_icon="📽️")
-
-# --- 3. DATA JADWAL (KNOWLEDGE BASE) ---
-SCHEDULE_DATA = """
-JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
-- 04 Mei (Monday): 07.30–10.00: Academic Reading (Anitha Thalib Mbau); 10.15–11.50: Language Learning Theories (Siti Rachmi); 12.30–15.00: Academic Writing Proficiency (Nurlaela); 15.15–16.55: Data Literacy (Nadya Septiani Rahman)
-- 05 Mei (Tuesday): 07.30–10.00: English Translation (Nurul Pratiwi); 10.15–11.50: Technology-enhanced Language Instruction (Siti Medyanti Pawata); 12.30–15.00: Creative Writing (Nurul Pratiwi); 15.15–16.55: British/American Literature (Nadya Septiani Rahman)
-- 06 Mei (Wednesday): 07.30–10.00: Data Literacy (Nadya Septiani Rahman); 10.15–11.50: Indonesian for Foreign Speakers (Siti Rachmi); 12.30–15.00: English Semantics and Pragmatics (Nurul Pratiwi); 15.15–16.55: Academic Reading Proficiency (Anitha Thalib Mbau)
-- 07 Mei (Thursday): 07.30–10.00: Academic Speaking Proficiency (Siti Medyanti Pawata); 10.15–11.50: Paragraph Writing (Siti Medyanti Pawata); 12.30–15.00: Intermediate English Grammar (Sukma Widya Sasmi Sabbu); 15.15–16.55: Intermediate English Grammar (Sukma Widya Sasmi Sabbu)
-- 08 Mei (Friday): 07.30–10.00: British/American Culture (Srilidiawati Epa); 10.15–11.50: English Semantics and Pragmatics (Nurul Pratiwi); 12.30–15.00: English Poetry and Prose (Nadya Septiani); 15.15–16.55: English Phonetics and Phonology (Siti Rachmi)
-- 11 Mei (Monday): 07.30–10.00: British/American Culture (Siti Medyanti Pawata); 10.15–11.50: English Popular Culture (Srilidiawati Epa); 12.30–15.00: Language Learning Theories (Siti Rachmi); 15.15–16.55: Oral Communication Skills (Anitha Thalib Mbau)
-- 12 Mei (Tuesday): 07.30–10.00: Contextual English Words (Srilidiawati Epa); 10.15–11.50: British/American Literature (Nadya Septiani Rahman); 12.30–15.00: Creative Writing (Nurul Pratiwi); 15.15–16.55: Second Language Acquisition (Sukma Widya Sasmi Sabbu)
-- 13 Mei (Wednesday): 07.30–10.00: Academic Reading (Anitha Thalib Mbau); 10.15–11.50: English Poetry and Prose (Nadya Septiani Rahman); 12.30–15.00: English Semantics and Pragmatics (Nurul Pratiwi); 15.15–16.55: Second Language Acquisition (Sukma Widya Sasmi Sabbu)
-- 18 Mei (Monday): 07.30–10.00: British/American Culture (Srilidiawati Epa); 10.15–11.50: Paragraph Writing (Siti Medyanti Pawata); 12.30–15.00: Academic Writing Proficiency (Nurlaela); 15.15–16.55: Academic Listening Proficiency (Sukma Widya Sasmi Sabbu)
-- 19 Mei (Tuesday): 07.30–10.00: Oral Communication Skills (Anitha Thalib Mbau); 10.15–11.50: Contextual English Words (Srilidiawati Epa); 12.30–15.00: Creative Writing (Nurul Pratiwi); 15.15–16.55: Literary and Cultural Studies (Srilidiawati Epa)
-- 20 Mei (Wednesday): 07.30–10.00: Data Literacy (Nadya Septiani Rahman); 10.15–11.50: Indonesian for Foreign Speakers (Siti Rachmi); 12.30–15.00: English Semantics and Pragmatics (Nurul Pratiwi); 15.15–16.55: Academic Reading Proficiency (Anitha Thalib Mbau)
-- 21 Mei (Thursday): 07.30–10.00: Scientific Reading (Anitha Thalib Mbau); 10.15–11.50: English Translation (Nurul Pratiwi); 12.30–15.00: Research Methods on Language and Culture (Nurlaela); 15.15–16.55: Intermediate English Grammar (Sukma Widya Sasmi Sabbu)
-- 22 Mei (Friday): 07.30–10.00: British/American Culture (Srilidiawati Epa); 10.15–11.50: Scientific Reading (Anita Thalib Mbau); 12.30–15.00: English Poetry and Prose (Nadya Septiani); 15.15–16.55: English Phonetics and Phonology (Siti Rachmi)
-- 25 Mei (Monday): 07.30–10.00: Academic Reading (Anitha Thalib Mbau); 10.15–11.50: Language Learning Theories (Siti Rachmi); 12.30–15.00: Language Learning Theories (Siti Rachmi); 15.15–16.55: Data Literacy (Nadya Septiani)
-- 26 Mei (Tuesday): 07.30–10.00: English Translation (Nurul Pratiwi); 10.15–11.50: Technology-enhanced Language Instruction (Siti Medyanti Pawata); 12.30–15.00: Creative Writing (Nurul Pratiwi); 15.15–16.55: British/American Literature (Nadya Septiani Rahman)
-- 29 Mei (Friday): 07.30–10.00: British/American Culture (Srilidiawati Epa); 10.15–11.50: Film Studies (Nadya Septiani Rahman); 12.30–15.00: English Poetry and Prose (Nadya Septiani); 15.15–16.55: English Phonetics and Phonology (Siti Rachmi)
-"""
-
-# --- 4. TAMPILAN DIAGNOSA (Hanya muncul jika library belum ada) ---
-if not AI_READY:
-    st.error("❌ SISTEM BELUM SIAP: Library 'google-generativeai' tidak ditemukan.")
-    st.info("Daftar file di server saat ini:")
-    st.write(os.listdir("."))
-    
-    st.markdown("""
-    **Tindakan yang harus Anda lakukan di GitHub:**
-    1. Pastikan ada file bernama `requirements.txt` (semua huruf kecil).
-    2. Isi file tersebut dengan: 
-       ```
-       streamlit
-       google-generativeai
-       ```
-    3. Pastikan file tersebut berada di folder yang sama dengan `app.py`.
-    4. Setelah itu, silakan **Reboot App** di Dashboard Streamlit.
-    """)
-    st.stop()
-
-# --- 5. LOGIKA APLIKASI UTAMA (Berjalan jika library OK) ---
-st.title("📽️ Jadwal Proyektor FKIP UNTIKA")
-st.write("Silakan cari jadwal berdasarkan Tanggal atau Nama Dosen.")
-
-# Ambil API Key
-api_key = st.secrets.get("GOOGLE_API_KEY", "")
-
-with st.sidebar:
-    st.header("🔑 Pengaturan")
-    if api_key:
-        st.success("API Key Terdeteksi")
-    else:
-        st.warning("API Key belum diatur di Secrets")
-        api_key = st.text_input("Masukan API Key Manual:", type="password")
-
-# Form Pencarian
-col1, col2 = st.columns(2)
-with col1:
-    date_val = st.number_input("📅 Tanggal (Mei 2026):", 0, 31, 0, help="Isi 0 untuk mencari semua tanggal.")
-with col2:
-    lecturers = sorted(list(set([
-        "Anitha Thalib Mbau", "Siti Rachmi", "Nurlaela", "Nadya Septiani Rahman", 
-        "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", 
-        "Srilidiawati Epa", "Anita Thalib Mbau"
-    ])))
-    lect_val = st.selectbox("👤 Nama Dosen:", ["-- Abaikan --"] + lecturers)
-
 if st.button("🔍 CARI JADWAL"):
     if not api_key:
         st.error("API Key kosong. Silakan masukkan kunci di sidebar.")
     else:
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            # --- STRATEGI CADANGAN MODEL ---
+            # 1. Coba Flash Latest (Paling Cepat)
+            # 2. Jika gagal, coba Pro (Paling Pintar)
+            try:
+                model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                st.write("⏱️ Menggunakan Model: Flash Latest")
+            except:
+                model = genai.GenerativeModel('gemini-pro')
+                st.write("🧠 Menggunakan Model: Gemini Pro")
             
             # Logika Prompt
             if date_val != 0 and lect_val == "-- Abaikan --":
@@ -94,15 +23,19 @@ if st.button("🔍 CARI JADWAL"):
             else:
                 query = f"Tampilkan jadwal dosen '{lect_val}' pada tanggal {date_val} Mei 2026."
 
-            prompt = f"Gunakan data ini:\n{SCHEDULE_DATA}\n\nPerintah: {query}\nSajikan dalam tabel Markdown yang rapi."
+            prompt = f"""
+            Data Jadwal Resmi:
+            {SCHEDULE_DATA}
 
-            with st.spinner("Sedang memproses..."):
+            Instruksi: {query}
+            Tampilkan dalam format tabel Markdown (Tanggal, Jam, Matakuliah, Dosen).
+            Jika tidak ada jadwal, tulis: 'Mohon maaf, tidak ada jadwal untuk kriteria tersebut.'
+            """
+
+            with st.spinner("AI sedang menganalisis jadwal..."):
                 response = model.generate_content(prompt)
                 st.divider()
                 st.markdown(response.text)
+                
         except Exception as e:
             st.error(f"Terjadi kesalahan AI: {e}")
-
-# Footer
-st.divider()
-st.caption("© 2026 Prodi Bahasa Dan Kebudayaan Inggris - UNTIKA Luwuk")
