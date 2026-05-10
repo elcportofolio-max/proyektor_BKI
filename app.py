@@ -1,12 +1,16 @@
 import streamlit as st
 import google.generativeai as genai
 
-# --- KONFIGURASI ---
-st.set_page_config(page_title="Jadwal Proyektor UNTIKA", page_icon="📽️")
+# --- 1. KONFIGURASI HALAMAN ---
+st.set_page_config(
+    page_title="Jadwal Proyektor UNTIKA Luwuk",
+    page_icon="📽️",
+    layout="centered"
+)
 
-# --- DATA JADWAL ---
+# --- 2. DATA JADWAL LENGKAP (KNOWLEDGE BASE) ---
 SCHEDULE_DATA = """
-JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - PRODI BAHASA INGGRIS UNTIKA:
+JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
 - 04 Mei (Monday): 07.30–10.00: Academic Reading (Anitha Thalib Mbau); 10.15–11.50: Language Learning Theories (Siti Rachmi); 12.30–15.00: Academic Writing Proficiency (Nurlaela); 15.15–16.55: Data Literacy (Nadya Septiani Rahman)
 - 05 Mei (Tuesday): 07.30–10.00: English Translation (Nurul Pratiwi); 10.15–11.50: Technology-enhanced Language Instruction (Siti Medyanti Pawata); 12.30–15.00: Creative Writing (Nurul Pratiwi); 15.15–16.55: British/American Literature (Nadya Septiani Rahman)
 - 06 Mei (Wednesday): 07.30–10.00: Data Literacy (Nadya Septiani Rahman); 10.15–11.50: Indonesian for Foreign Speakers (Siti Rachmi); 12.30–15.00: English Semantics and Pragmatics (Nurul Pratiwi); 15.15–16.55: Academic Reading Proficiency (Anitha Thalib Mbau)
@@ -25,47 +29,79 @@ JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - PRODI BAHASA INGGRIS UNTIKA:
 - 29 Mei (Friday): 07.30–10.00: British/American Culture (Srilidiawati Epa); 10.15–11.50: Film Studies (Nadya Septiani Rahman); 12.30–15.00: English Poetry and Prose (Nadya Septiani); 15.15–16.55: English Phonetics and Phonology (Siti Rachmi)
 """
 
-# --- SIDEBAR & API CHECK ---
-st.sidebar.title("🔑 Akses API")
-api_input = st.sidebar.text_input("Ganti API Key (Opsional):", type="password")
+# Daftar Dosen untuk Menu Dropdown
+LECTURERS = sorted(list(set([
+    "Anitha Thalib Mbau", "Siti Rachmi", "Nurlaela", "Nadya Septiani Rahman", 
+    "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", 
+    "Srilidiawati Epa", "Anita Thalib Mbau"
+])))
 
-# Ambil API Key dari Secrets jika input kosong
-api_key = api_input if api_input else st.secrets.get("GOOGLE_API_KEY", "")
+# --- 3. LOGIKA API KEY ---
+# Mengambil dari Streamlit Secrets atau Sidebar
+api_key_env = st.secrets.get("GOOGLE_API_KEY", "")
+api_key_side = st.sidebar.text_input("Ganti API Key (Jika perlu):", value=api_key_env, type="password")
+final_api_key = api_key_side if api_key_side else api_key_env
 
-if api_key:
-    st.sidebar.success("Kunci API Terdeteksi")
-else:
-    st.sidebar.error("Kunci API Tidak Ditemukan!")
+with st.sidebar:
+    if final_api_key:
+        st.success("✅ API Key Terpasang")
+    else:
+        st.error("❌ API Key Belum Ada")
+    st.info("Model: Gemini 1.5 Flash")
 
-# Pilih Model yang stabil (1.5 Flash atau 2.0 Flash)
-model_name = st.sidebar.selectbox("Pilih Model:", ["gemini-1.5-flash", "gemini-2.0-flash-exp"])
+# --- 4. TAMPILAN UTAMA ---
+st.title("📽️ Cek Jadwal Proyektor")
+st.markdown("Pusat Informasi Penggunaan In Focus - **FKIP UNTIKA Luwuk**")
 
-# --- MAIN UI ---
-st.title("📽️ Jadwal Proyektor FKIP UNTIKA")
-date_val = st.number_input("📅 Tanggal Mei 2026 (0 = Semua):", 0, 31, 0)
-lecturer_list = sorted(list(set(["Anitha Thalib Mbau", "Siti Rachmi", "Nurlaela", "Nadya Septiani Rahman", "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", "Srilidiawati Epa", "Anita Thalib Mbau"])))
-lecturer_val = st.selectbox("👤 Pilih Dosen:", ["-- Abaikan --"] + lecturer_list)
+# Input Pencarian
+col1, col2 = st.columns(2)
+with col1:
+    date_input = st.number_input("📅 Pilih Tanggal (Mei 2026):", 0, 31, 0, help="Isi 0 jika ingin mencari semua tanggal.")
+with col2:
+    lect_input = st.selectbox("👤 Pilih Nama Dosen:", ["-- Abaikan Nama Dosen --"] + LECTURERS)
 
-if st.button("🔍 CARI JADWAL"):
-    if not api_key:
-        st.error("Silakan masukkan API Key yang valid!")
+# Tombol Eksekusi
+if st.button("🔍 TEMUKAN JADWAL"):
+    if not final_api_key:
+        st.error("Silakan masukkan API Key terlebih dahulu!")
+    elif date_input == 0 and lect_input == "-- Abaikan Nama Dosen --":
+        st.warning("Mohon isi minimal satu kriteria pencarian (Tanggal atau Dosen).")
     else:
         try:
-            genai.configure(api_key=api_key)
-            # Tes inisialisasi model
-            model = genai.GenerativeModel(model_name)
+            # Konfigurasi AI
+            genai.configure(api_key=final_api_key)
+            # Menggunakan 1.5-flash karena 2.5-flash belum rilis resmi
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
-            # Logic Query
-            query = f"Cari jadwal untuk tanggal {date_val} dan dosen {lecturer_val}."
-            if date_val == 0: query = f"Cari jadwal untuk dosen {lecturer_val}."
-            if lecturer_val == "-- Abaikan --": query = f"Cari semua jadwal tanggal {date_val}."
+            # Membuat logika pencarian
+            if date_input != 0 and lect_input == "-- Abaikan Nama Dosen --":
+                search_query = f"Daftar jadwal proyektor pada tanggal {date_input} Mei 2026."
+            elif date_input == 0 and lect_input != "-- Abaikan Nama Dosen --":
+                search_query = f"Semua jadwal penggunaan proyektor untuk dosen {lect_input} selama Mei 2026."
+            else:
+                search_query = f"Jadwal dosen {lect_input} khusus pada tanggal {date_input} Mei 2026."
 
-            prompt = f"Gunakan data ini:\n{SCHEDULE_DATA}\n\nPerintah: {query}\nSajikan dalam tabel Markdown."
+            prompt = f"""
+            Gunakan data jadwal ini sebagai referensi tunggal:
+            {SCHEDULE_DATA}
+
+            Perintah: {search_query}
             
-            with st.spinner("Menghubungkan ke server Google..."):
+            Aturan Jawaban:
+            1. Jika ada, sajikan dalam TABEL Markdown: Tanggal | Jam | Matakuliah | Dosen.
+            2. Jika tidak ada jadwal, beritahu dengan sopan bahwa jadwal tidak ditemukan.
+            3. Gunakan Bahasa Indonesia yang formal.
+            """
+
+            with st.spinner("Mencari data di jadwal resmi..."):
                 response = model.generate_content(prompt)
+                st.divider()
+                st.subheader("📍 Hasil Pencarian")
                 st.markdown(response.text)
                 
         except Exception as e:
-            st.error(f"❌ Terjadi kesalahan: {e}")
-            st.info("Saran Pakar: Pastikan API Key di Google AI Studio sudah benar dan pilih model 'gemini-1.5-flash' jika '2.0' atau '2.5' belum aktif di wilayah Anda.")
+            st.error(f"Terjadi kesalahan teknis: {e}")
+
+# --- 5. FOOTER ---
+st.divider()
+st.caption("© 2026 Prodi Bahasa Dan Kebudayaan Inggris - Universitas Tompotika Luwuk")
