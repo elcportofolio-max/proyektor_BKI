@@ -8,7 +8,29 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. DATA JADWAL MEI 2026 ---
+# Custom CSS untuk tampilan profesional Program Studi
+st.markdown("""
+    <style>
+    .stApp { background-color: #ffffff; }
+    .stButton>button {
+        background-color: #1E3A8A;
+        color: white;
+        border-radius: 10px;
+        height: 3.5em;
+        width: 100%;
+        font-weight: bold;
+        font-size: 18px;
+    }
+    .main-header {
+        color: #1E3A8A;
+        text-align: center;
+        font-family: 'Arial';
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. DATA JADWAL (KNOWLEDGE BASE) ---
+# Seluruh data dari PDF telah dimasukkan sebagai basis pengetahuan AI
 SCHEDULE_DATA = """
 JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
 - 04 Mei (Monday): 07.30–10.00: Academic Reading (Anitha Thalib Mbau); 10.15–11.50: Language Learning Theories (Siti Rachmi); 12.30–15.00: Academic Writing Proficiency (Nurlaela); 15.15–16.55: Data Literacy (Nadya Septiani Rahman)
@@ -29,69 +51,70 @@ JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
 - 29 Mei (Friday): 07.30–10.00: British/American Culture (Srilidiawati Epa); 10.15–11.50: Film Studies (Nadya Septiani Rahman); 12.30–15.00: English Poetry and Prose (Nadya Septiani); 15.15–16.55: English Phonetics and Phonology (Siti Rachmi)
 """
 
-# --- 3. DETEKSI MODEL ---
+# --- 3. LOGIKA AI (GEMINI 2.5 FLASH) ---
 api_key = st.secrets.get("GOOGLE_API_KEY", "")
 
-st.title("📽️ Sistem Informasi Jadwal Proyektor")
-st.markdown("##### FKIP UNTIKA Luwuk")
+# Inisialisasi Judul Utama
+st.markdown("<h1 class='main-header'>📽️ Sistem Jadwal Proyektor</h1>", unsafe_allow_html=True)
+st.markdown("<h5 style='text-align: center;'>Program Studi Bahasa Dan Kebudayaan Inggris - FKIP UNTIKA Luwuk</h5>", unsafe_allow_html=True)
+st.divider()
 
-available_models = []
-if api_key:
-    try:
-        genai.configure(api_key=api_key)
-        # Ambil daftar model yang bisa digunakan untuk teks
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Filter: Hapus model internal/robotics/preview yang bermasalah
-        valid_models = [m for m in available_models if "robotics" not in m and "preview" not in m]
-        
-        # Cari model flash (prioritas 1.5)
-        default_model = next((m for m in valid_models if "1.5" in m and "flash" in m), None)
-        if not default_model:
-            default_model = next((m for m in valid_models if "flash" in m), valid_models[0] if valid_models else None)
-    except Exception as e:
-        st.error(f"Koneksi API Gagal: {e}")
-        st.stop()
-else:
-    st.error("API Key belum diatur di Secrets Streamlit.")
-    st.stop()
-
-# Tampilkan Pilihan Model di Sidebar jika ingin ganti manual
-with st.sidebar:
-    st.header("⚙️ Konfigurasi")
-    selected_model = st.selectbox("Model yang Digunakan:", available_models, index=available_models.index(default_model) if default_model in available_models else 0)
-    st.info("Pilih model lain jika model saat ini memberikan error 404.")
+# Daftar Dosen untuk Menu
+dosen_list = sorted(list(set([
+    "Anitha Thalib Mbau", "Siti Rachmi", "Nurlaela", "Nadya Septiani Rahman", 
+    "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", 
+    "Srilidiawati Epa", "Anita Thalib Mbau"
+])))
 
 # --- 4. ANTARMUKA PENCARIAN ---
 col1, col2 = st.columns(2)
 with col1:
-    date_val = st.number_input("📅 Tanggal (Mei 2026):", 0, 31, 0)
+    st.markdown("**Cari Berdasarkan Tanggal**")
+    date_val = st.number_input("Masukkan Tanggal Mei 2026 (0 = Semua):", 0, 31, 0)
 with col2:
-    dosen_list = sorted(list(set(["Anitha Thalib Mbau", "Siti Rachmi", "Nurlaela", "Nadya Septiani Rahman", "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", "Srilidiawati Epa", "Anita Thalib Mbau"])))
-    lect_val = st.selectbox("👤 Pilih Nama Dosen:", ["-- Abaikan --"] + dosen_list)
+    st.markdown("**Cari Berdasarkan Dosen**")
+    lect_val = st.selectbox("Pilih Nama Dosen:", ["-- Abaikan --"] + dosen_list)
 
-if st.button("🔍 CARI JADWAL SEKARANG"):
-    try:
-        model = genai.GenerativeModel(selected_model)
-        
-        # Penentuan Query
-        if date_val != 0 and lect_val == "-- Abaikan --":
-            query = f"Daftar jadwal proyektor tanggal {date_val} Mei 2026."
-        elif date_val == 0 and lect_val != "-- Abaikan --":
-            query = f"Daftar semua jadwal untuk dosen {lect_val} selama bulan Mei 2026."
-        else:
-            query = f"Jadwal dosen {lect_val} pada tanggal {date_val} Mei 2026."
+# Eksekusi Pencarian
+if st.button("🔍 TEMUKAN JADWAL"):
+    if not api_key:
+        st.error("API Key belum dikonfigurasi di Secrets.")
+    elif date_val == 0 and lect_val == "-- Abaikan --":
+        st.warning("Mohon tentukan Tanggal atau Nama Dosen untuk mencari.")
+    else:
+        try:
+            # Konfigurasi model sesuai temuan user yang sukses
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-2.5-flash')
 
-        prompt = f"Data Basis:\n{SCHEDULE_DATA}\n\nPerintah: {query}\nSajikan dalam TABEL Markdown yang rapi."
+            # Logika Filter Query
+            if date_val != 0 and lect_val == "-- Abaikan --":
+                query = f"Tampilkan semua jadwal proyektor pada tanggal {date_val} Mei 2026."
+            elif date_val == 0 and lect_val != "-- Abaikan --":
+                query = f"Daftar jadwal proyektor untuk dosen {lect_val} selama bulan Mei 2026."
+            else:
+                query = f"Cek jadwal dosen {lect_val} pada tanggal {date_val} Mei 2026."
 
-        with st.spinner(f"Memproses menggunakan {selected_model}..."):
-            response = model.generate_content(prompt)
-            st.divider()
-            st.markdown(response.text)
+            prompt = f"""
+            Gunakan data jadwal ini:
+            {SCHEDULE_DATA}
+
+            Instruksi: {query}
             
-    except Exception as e:
-        st.error(f"Kesalahan: {e}")
-        st.info("Coba ganti model di menu sebelah kiri (sidebar) dan klik cari lagi.")
+            Sajikan dalam TABEL Markdown (Tanggal, Jam, Mata Kuliah, Dosen).
+            Jika tidak ditemukan, beritahu bahwa jadwal kosong untuk kriteria tersebut.
+            Gunakan Bahasa Indonesia yang sopan.
+            """
 
+            with st.spinner("AI sedang memproses informasi..."):
+                response = model.generate_content(prompt)
+                st.divider()
+                st.subheader("📍 Hasil Pencarian Jadwal")
+                st.markdown(response.text)
+                
+        except Exception as e:
+            st.error(f"Terjadi kendala teknis: {e}")
+
+# --- 5. FOOTER ---
 st.divider()
-st.caption("© 2026 Prodi Bahasa Dan Kebudayaan Inggris - UNTIKA Luwuk")
+st.markdown("<p style='text-align: center; color: grey;'>© 2026 Program Studi Bahasa Dan Kebudayaan Inggris - Universitas Tompotika Luwuk</p>", unsafe_allow_html=True)
