@@ -8,20 +8,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS
-st.markdown("""
-    <style>
-    .stButton>button {
-        background-color: #1E3A8A;
-        color: white;
-        border-radius: 10px;
-        height: 3em;
-        width: 100%;
-        font-weight: bold;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
 # --- 2. DATA JADWAL MEI 2026 ---
 SCHEDULE_DATA = """
 JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
@@ -45,9 +31,8 @@ JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
 
 # --- 3. ANTARMUKA UTAMA ---
 st.title("📽️ Sistem Informasi Jadwal Proyektor")
-st.markdown("##### FKIP UNTIKA Luwuk")
+st.markdown("##### Program Studi Bahasa Dan Kebudayaan Inggris - FKIP UNTIKA Luwuk")
 
-# Ambil API Key dari Secrets
 api_key = st.secrets.get("GOOGLE_API_KEY", "")
 
 # Input Pencarian
@@ -60,50 +45,42 @@ with col2:
         "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", 
         "Srilidiawati Epa", "Anita Thalib Mbau"
     ])))
-    lect_val = st.selectbox("👤 Pilih Nama Dosen:", ["-- Abaikan --"] + dosen_list)
+    lect_val = st.selectbox("👤 Pilih Nama Dosen:", ["-- Abaikan Nama Dosen --"] + dosen_list)
 
 if st.button("🔍 CARI JADWAL SEKARANG"):
     if not api_key:
         st.error("API Key belum diatur di Secrets Streamlit.")
-    elif date_val == 0 and lect_val == "-- Abaikan --":
+    elif date_val == 0 and lect_val == "-- Abaikan Nama Dosen --":
         st.warning("Mohon tentukan Tanggal atau Nama Dosen.")
     else:
         try:
             genai.configure(api_key=api_key)
             
-            # --- LOGIKA PRIORITAS MODEL (ANTI-LIMIT) ---
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            
-            # Kita cari secara spesifik model yang punya kuota 1.500/hari
-            # Urutan prioritas: 1.5-flash -> 1.5-flash-latest -> model apa saja selain 2.5/2.0
-            high_quota_models = [m for m in available_models if "1.5-flash" in m]
-            
-            if high_quota_models:
-                selected_model = high_quota_models[0]
-            else:
-                # Jika tidak ada 1.5, hindari 2.5 jika ada pilihan lain
-                selected_model = next((m for m in available_models if "2.5" not in m), available_models[0])
+            # --- SOLUSI KRUSIAL: PAKSA MODEL STABIL ---
+            # Kita coba 'gemini-1.5-flash-latest' karena kuotanya 1.500 per hari
+            model_name = "gemini-1.5-flash-latest"
+            model = genai.GenerativeModel(model_name)
 
-            model = genai.GenerativeModel(selected_model)
+            query = f"Cari jadwal Mei 2026 untuk tanggal {date_val} dan dosen {lect_val}."
 
-            # Query Logic
-            if date_val != 0 and lect_val == "-- Abaikan --":
-                query = f"Tampilkan jadwal proyektor pada tanggal {date_val} Mei 2026."
-            elif date_val == 0 and lect_val != "-- Abaikan --":
-                query = f"Daftar jadwal proyektor untuk dosen {lect_val} selama bulan Mei 2026."
-            else:
-                query = f"Cek jadwal dosen {lect_val} pada tanggal {date_val} Mei 2026."
+            prompt = f"Data:\n{SCHEDULE_DATA}\n\nInstruksi: {query}\nSajikan dalam tabel Markdown (Tanggal, Jam, Matakuliah, Dosen)."
 
-            prompt = f"Gunakan data ini:\n{SCHEDULE_DATA}\n\nPerintah: {query}\nSajikan dalam TABEL Markdown (Tanggal, Jam, Mata Kuliah, Dosen)."
-
-            with st.spinner(f"Memproses dengan {selected_model}..."):
+            with st.spinner(f"AI sedang memproses..."):
                 response = model.generate_content(prompt)
                 st.divider()
                 st.markdown(response.text)
                 
         except Exception as e:
             if "429" in str(e):
-                st.error("⚠️ Kuota model ini habis. Mohon tunggu beberapa saat atau ganti API Key.")
+                st.error("⚠️ Kuota harian model baru habis (Limit 20). Silakan tunggu 24 jam atau buat API Key baru dengan akun Google lain.")
+            elif "404" in str(e):
+                # Jika 'latest' gagal, coba nama standar
+                try:
+                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    response = model.generate_content(prompt)
+                    st.markdown(response.text)
+                except Exception as e2:
+                    st.error(f"Gagal memanggil model AI: {e2}")
             else:
                 st.error(f"Terjadi kesalahan: {e}")
 
