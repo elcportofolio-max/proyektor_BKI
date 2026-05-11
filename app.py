@@ -49,16 +49,30 @@ with col2:
 
 if st.button("🔍 CARI JADWAL SEKARANG"):
     if not api_key:
-        st.error("API Key tidak ditemukan. Pastikan sudah diatur di Secrets Streamlit.")
+        st.error("API Key tidak ditemukan di Secrets Streamlit.")
     elif date_val == 0 and lect_val == "-- Abaikan Nama Dosen --":
         st.warning("Mohon isi tanggal atau pilih nama dosen.")
     else:
         try:
-            # Konfigurasi AI
             genai.configure(api_key=api_key)
             
-            # Kunci ke model 1.5 Flash agar kuota GRATIS melimpah (1.500/hari)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            # --- SOLUSI 404: AUTO-TRY MULTIPLE MODELS ---
+            model_names = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-1.5-pro']
+            model = None
+            
+            for name in model_names:
+                try:
+                    test_model = genai.GenerativeModel(name)
+                    # Coba tes singkat apakah model merespon
+                    test_model.generate_content("test", generation_config={"max_output_tokens": 1})
+                    model = test_model
+                    break # Berhenti jika berhasil
+                except:
+                    continue
+            
+            if model is None:
+                st.error("❌ Tidak ada model Gemini yang merespon. Pastikan API Key Anda aktif di Google AI Studio.")
+                st.stop()
 
             # Logika Filter Query
             if date_val != 0 and lect_val == "-- Abaikan Nama Dosen --":
@@ -76,10 +90,7 @@ if st.button("🔍 CARI JADWAL SEKARANG"):
                 st.markdown(response.text)
                 
         except Exception as e:
-            if "429" in str(e):
-                st.error("⚠️ Kuota harian Gemini 1.5 Flash habis. Silakan coba lagi besok.")
-            else:
-                st.error(f"Terjadi kesalahan: {e}")
+            st.error(f"Terjadi kesalahan: {e}")
 
 # Footer
 st.divider()
