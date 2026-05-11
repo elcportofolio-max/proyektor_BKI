@@ -29,15 +29,38 @@ JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
 - 29 Mei (Friday): 07.30–10.00: British/American Culture (Srilidiawati Epa); 10.15–11.50: Film Studies (Nadya Septiani Rahman); 12.30–15.00: English Poetry and Prose (Nadya Septiani); 15.15–16.55: English Phonetics and Phonology (Siti Rachmi)
 """
 
-# --- 3. LOGIKA SELECTION MODEL PRODUKSI ---
+# --- 3. DETEKSI MODEL ---
 api_key = st.secrets.get("GOOGLE_API_KEY", "")
 
 st.title("📽️ Sistem Informasi Jadwal Proyektor")
 st.markdown("##### FKIP UNTIKA Luwuk")
 
-if not api_key:
+available_models = []
+if api_key:
+    try:
+        genai.configure(api_key=api_key)
+        # Ambil daftar model yang bisa digunakan untuk teks
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Filter: Hapus model internal/robotics/preview yang bermasalah
+        valid_models = [m for m in available_models if "robotics" not in m and "preview" not in m]
+        
+        # Cari model flash (prioritas 1.5)
+        default_model = next((m for m in valid_models if "1.5" in m and "flash" in m), None)
+        if not default_model:
+            default_model = next((m for m in valid_models if "flash" in m), valid_models[0] if valid_models else None)
+    except Exception as e:
+        st.error(f"Koneksi API Gagal: {e}")
+        st.stop()
+else:
     st.error("API Key belum diatur di Secrets Streamlit.")
     st.stop()
+
+# Tampilkan Pilihan Model di Sidebar jika ingin ganti manual
+with st.sidebar:
+    st.header("⚙️ Konfigurasi")
+    selected_model = st.selectbox("Model yang Digunakan:", available_models, index=available_models.index(default_model) if default_model in available_models else 0)
+    st.info("Pilih model lain jika model saat ini memberikan error 404.")
 
 # --- 4. ANTARMUKA PENCARIAN ---
 col1, col2 = st.columns(2)
@@ -49,35 +72,8 @@ with col2:
 
 if st.button("🔍 CARI JADWAL SEKARANG"):
     try:
-        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(selected_model)
         
-        # DAFTAR MODEL PRODUKSI RESMI (Bukan Preview/Internal)
-        # Kita coba urutan yang paling stabil dan kuota besar
-        model_candidates = [
-            'gemini-1.5-flash',
-            'gemini-1.5-flash-001',
-            'gemini-1.5-flash-latest',
-            'gemini-pro'
-        ]
-        
-        model = None
-        working_model_name = ""
-        
-        for m_name in model_candidates:
-            try:
-                temp_model = genai.GenerativeModel(m_name)
-                # Tes respon singkat untuk memastikan model hidup
-                temp_model.generate_content("ping", generation_config={"max_output_tokens": 1})
-                model = temp_model
-                working_model_name = m_name
-                break
-            except:
-                continue
-
-        if not model:
-            st.error("Gagal menemukan model Gemini yang aktif. Silakan buat API Key baru di Google AI Studio.")
-            st.stop()
-
         # Penentuan Query
         if date_val != 0 and lect_val == "-- Abaikan --":
             query = f"Daftar jadwal proyektor tanggal {date_val} Mei 2026."
@@ -88,17 +84,14 @@ if st.button("🔍 CARI JADWAL SEKARANG"):
 
         prompt = f"Data Basis:\n{SCHEDULE_DATA}\n\nPerintah: {query}\nSajikan dalam TABEL Markdown yang rapi."
 
-        with st.spinner(f"Memproses jadwal..."):
+        with st.spinner(f"Memproses menggunakan {selected_model}..."):
             response = model.generate_content(prompt)
             st.divider()
             st.markdown(response.text)
-            st.caption(f"Sistem: Menggunakan model {working_model_name}")
             
     except Exception as e:
-        if "429" in str(e):
-            st.error("⚠️ Kuota model ini habis (Limit harian). Mohon coba lagi besok atau gunakan API Key dari akun Gmail lain.")
-        else:
-            st.error(f"Terjadi kesalahan: {e}")
+        st.error(f"Kesalahan: {e}")
+        st.info("Coba ganti model di menu sebelah kiri (sidebar) dan klik cari lagi.")
 
 st.divider()
 st.caption("© 2026 Prodi Bahasa Dan Kebudayaan Inggris - UNTIKA Luwuk")
