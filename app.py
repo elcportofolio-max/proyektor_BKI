@@ -29,7 +29,7 @@ JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
 - 29 Mei (Friday): 07.30–10.00: British/American Culture (Srilidiawati Epa); 10.15–11.50: Film Studies (Nadya Septiani Rahman); 12.30–15.00: English Poetry and Prose (Nadya Septiani); 15.15–16.55: English Phonetics and Phonology (Siti Rachmi)
 """
 
-# --- 3. LOGIKA PEMILIHAN MODEL CERDAS ---
+# --- 3. LOGIKA SELECTION MODEL PRODUKSI ---
 api_key = st.secrets.get("GOOGLE_API_KEY", "")
 
 st.title("📽️ Sistem Informasi Jadwal Proyektor")
@@ -38,29 +38,6 @@ st.markdown("##### FKIP UNTIKA Luwuk")
 if not api_key:
     st.error("API Key belum diatur di Secrets Streamlit.")
     st.stop()
-
-# Fungsi untuk mencari model terbaik dengan kuota tinggi (1.5 Flash)
-def get_best_model():
-    try:
-        genai.configure(api_key=api_key)
-        all_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Prioritas 1: Mencari model 1.5 Flash (Kuota 1.500/hari)
-        target = next((m for m in all_models if "1.5" in m and "flash" in m), None)
-        
-        # Prioritas 2: Mencari model 1.5 Pro
-        if not target:
-            target = next((m for m in all_models if "1.5" in m), None)
-            
-        # Prioritas 3: Model apapun yang BUKAN 2.5 atau 2.0 (agar tidak kena limit 20)
-        if not target:
-            target = next((m for m in all_models if "2.5" not in m and "2.0" not in m), all_models[0])
-            
-        return target
-    except Exception as e:
-        return str(e)
-
-final_model = get_best_model()
 
 # --- 4. ANTARMUKA PENCARIAN ---
 col1, col2 = st.columns(2)
@@ -72,13 +49,35 @@ with col2:
 
 if st.button("🔍 CARI JADWAL SEKARANG"):
     try:
-        # Cek jika final_model mengembalikan error string
-        if "models/" not in str(final_model):
-            st.error(f"Gagal mendeteksi model: {final_model}")
-            st.stop()
-            
-        model = genai.GenerativeModel(final_model)
+        genai.configure(api_key=api_key)
         
+        # DAFTAR MODEL PRODUKSI RESMI (Bukan Preview/Internal)
+        # Kita coba urutan yang paling stabil dan kuota besar
+        model_candidates = [
+            'gemini-1.5-flash',
+            'gemini-1.5-flash-001',
+            'gemini-1.5-flash-latest',
+            'gemini-pro'
+        ]
+        
+        model = None
+        working_model_name = ""
+        
+        for m_name in model_candidates:
+            try:
+                temp_model = genai.GenerativeModel(m_name)
+                # Tes respon singkat untuk memastikan model hidup
+                temp_model.generate_content("ping", generation_config={"max_output_tokens": 1})
+                model = temp_model
+                working_model_name = m_name
+                break
+            except:
+                continue
+
+        if not model:
+            st.error("Gagal menemukan model Gemini yang aktif. Silakan buat API Key baru di Google AI Studio.")
+            st.stop()
+
         # Penentuan Query
         if date_val != 0 and lect_val == "-- Abaikan --":
             query = f"Daftar jadwal proyektor tanggal {date_val} Mei 2026."
@@ -89,15 +88,15 @@ if st.button("🔍 CARI JADWAL SEKARANG"):
 
         prompt = f"Data Basis:\n{SCHEDULE_DATA}\n\nPerintah: {query}\nSajikan dalam TABEL Markdown yang rapi."
 
-        with st.spinner(f"Menghubungkan ke {final_model}..."):
+        with st.spinner(f"Memproses jadwal..."):
             response = model.generate_content(prompt)
             st.divider()
             st.markdown(response.text)
-            st.caption(f"Log: Berhasil menggunakan {final_model}")
+            st.caption(f"Sistem: Menggunakan model {working_model_name}")
             
     except Exception as e:
         if "429" in str(e):
-            st.error("⚠️ Kuota harian model habis. Mohon coba lagi besok.")
+            st.error("⚠️ Kuota model ini habis (Limit harian). Mohon coba lagi besok atau gunakan API Key dari akun Gmail lain.")
         else:
             st.error(f"Terjadi kesalahan: {e}")
 
