@@ -8,7 +8,21 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. DATA JADWAL (KNOWLEDGE BASE) ---
+# Custom CSS
+st.markdown("""
+    <style>
+    .stButton>button {
+        background-color: #1E3A8A;
+        color: white;
+        border-radius: 10px;
+        height: 3em;
+        width: 100%;
+        font-weight: bold;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. DATA JADWAL MEI 2026 ---
 SCHEDULE_DATA = """
 JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
 - 04 Mei (Monday): 07.30–10.00: Academic Reading (Anitha Thalib Mbau); 10.15–11.50: Language Learning Theories (Siti Rachmi); 12.30–15.00: Academic Writing Proficiency (Nurlaela); 15.15–16.55: Data Literacy (Nadya Septiani Rahman)
@@ -29,63 +43,69 @@ JADWAL PENGGUNAAN PROYEKTOR MEI 2026 - FKIP UNTIKA LUWUK:
 - 29 Mei (Friday): 07.30–10.00: British/American Culture (Srilidiawati Epa); 10.15–11.50: Film Studies (Nadya Septiani Rahman); 12.30–15.00: English Poetry and Prose (Nadya Septiani); 15.15–16.55: English Phonetics and Phonology (Siti Rachmi)
 """
 
-# --- 3. LOGIKA DETEKSI MODEL OTOMATIS ---
-api_key = st.secrets.get("GOOGLE_API_KEY", "")
-
+# --- 3. ANTARMUKA UTAMA ---
 st.title("📽️ Sistem Informasi Jadwal Proyektor")
 st.markdown("##### FKIP UNTIKA Luwuk")
 
-if not api_key:
-    st.error("API Key belum diatur di Secrets Streamlit.")
-    st.stop()
+# Ambil API Key dari Secrets
+api_key = st.secrets.get("GOOGLE_API_KEY", "")
 
-try:
-    genai.configure(api_key=api_key)
-    # Mencari model yang tersedia di akun pengguna
-    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    
-    # Mencari varian model 'flash' yang paling pas (karena kuotanya besar)
-    flash_models = [m for m in available_models if "flash" in m]
-    if flash_models:
-        # Prioritaskan versi 1.5 jika ada untuk kuota maksimal
-        final_model = next((m for m in flash_models if "1.5" in m), flash_models[0])
-    else:
-        final_model = available_models[0]
-        
-except Exception as e:
-    st.error(f"Gagal mendeteksi model: {e}")
-    st.stop()
-
-# --- 4. ANTARMUKA PENCARIAN ---
+# Input Pencarian
 col1, col2 = st.columns(2)
 with col1:
-    date_val = st.number_input("📅 Tanggal (Mei 2026):", 0, 31, 0)
+    date_val = st.number_input("📅 Tanggal (0 = Lihat Semua):", 0, 31, 0)
 with col2:
-    dosen_list = sorted(list(set(["Anitha Thalib Mbau", "Siti Rachmi", "Nurlaela", "Nadya Septiani Rahman", "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", "Srilidiawati Epa", "Anita Thalib Mbau"])))
+    dosen_list = sorted(list(set([
+        "Anitha Thalib Mbau", "Siti Rachmi", "Nurlaela", "Nadya Septiani Rahman", 
+        "Nurul Pratiwi", "Siti Medyanti Pawata", "Sukma Widya Sasmi Sabbu", 
+        "Srilidiawati Epa", "Anita Thalib Mbau"
+    ])))
     lect_val = st.selectbox("👤 Pilih Nama Dosen:", ["-- Abaikan --"] + dosen_list)
 
 if st.button("🔍 CARI JADWAL SEKARANG"):
-    try:
-        model = genai.GenerativeModel(final_model)
-        
-        # Penentuan Query
-        if date_val != 0 and lect_val == "-- Abaikan --":
-            query = f"Daftar jadwal proyektor tanggal {date_val} Mei 2026."
-        elif date_val == 0 and lect_val != "-- Abaikan --":
-            query = f"Daftar semua jadwal untuk dosen {lect_val} selama bulan Mei 2026."
-        else:
-            query = f"Jadwal dosen {lect_val} pada tanggal {date_val} Mei 2026."
-
-        prompt = f"Data Basis:\n{SCHEDULE_DATA}\n\nPerintah: {query}\nSajikan dalam TABEL Markdown yang rapi."
-
-        with st.spinner("AI sedang bekerja..."):
-            response = model.generate_content(prompt)
-            st.divider()
-            st.markdown(response.text)
-            st.caption(f"Log: Menggunakan model {final_model}")
+    if not api_key:
+        st.error("API Key belum diatur di Secrets Streamlit.")
+    elif date_val == 0 and lect_val == "-- Abaikan --":
+        st.warning("Mohon tentukan Tanggal atau Nama Dosen.")
+    else:
+        try:
+            genai.configure(api_key=api_key)
             
-    except Exception as e:
-        st.error(f"Terjadi kesalahan: {e}")
+            # --- LOGIKA PRIORITAS MODEL (ANTI-LIMIT) ---
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            
+            # Kita cari secara spesifik model yang punya kuota 1.500/hari
+            # Urutan prioritas: 1.5-flash -> 1.5-flash-latest -> model apa saja selain 2.5/2.0
+            high_quota_models = [m for m in available_models if "1.5-flash" in m]
+            
+            if high_quota_models:
+                selected_model = high_quota_models[0]
+            else:
+                # Jika tidak ada 1.5, hindari 2.5 jika ada pilihan lain
+                selected_model = next((m for m in available_models if "2.5" not in m), available_models[0])
+
+            model = genai.GenerativeModel(selected_model)
+
+            # Query Logic
+            if date_val != 0 and lect_val == "-- Abaikan --":
+                query = f"Tampilkan jadwal proyektor pada tanggal {date_val} Mei 2026."
+            elif date_val == 0 and lect_val != "-- Abaikan --":
+                query = f"Daftar jadwal proyektor untuk dosen {lect_val} selama bulan Mei 2026."
+            else:
+                query = f"Cek jadwal dosen {lect_val} pada tanggal {date_val} Mei 2026."
+
+            prompt = f"Gunakan data ini:\n{SCHEDULE_DATA}\n\nPerintah: {query}\nSajikan dalam TABEL Markdown (Tanggal, Jam, Mata Kuliah, Dosen)."
+
+            with st.spinner(f"Memproses dengan {selected_model}..."):
+                response = model.generate_content(prompt)
+                st.divider()
+                st.markdown(response.text)
+                
+        except Exception as e:
+            if "429" in str(e):
+                st.error("⚠️ Kuota model ini habis. Mohon tunggu beberapa saat atau ganti API Key.")
+            else:
+                st.error(f"Terjadi kesalahan: {e}")
 
 st.divider()
 st.caption("© 2026 Prodi Bahasa Dan Kebudayaan Inggris - UNTIKA Luwuk")
